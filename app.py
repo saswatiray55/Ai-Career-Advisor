@@ -1,28 +1,23 @@
 # app.py
 import streamlit as st
 import fitz  # PyMuPDF
-import google.generativeai as genai
 import os
 import json
 from dotenv import load_dotenv
+from groq import Groq
+
 
 # --- Configuration ---
 # Load environment variables from .env file
 load_dotenv()
-API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# Configure the generative AI model
-# Add a check to ensure the app doesn't crash if the API key is missing
-try:
-    if API_KEY:
-        genai.configure(api_key=API_KEY)
-        model = genai.GenerativeModel('gemini-1.5-flash')
-    else:
-        model = None
-except Exception as e:
-    st.error(f"Error configuring Generative AI: {e}")
-    model = None
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+if not os.getenv("GROQ_API_KEY"):
+    st.error("🔴 GROQ_API_KEY not found! Add it to your .env file.")
     st.stop()
+
+MODEL_NAME = "llama-3.1-8b-instant"
 
 # --- Helper Functions ---
 def get_pdf_text(pdf_file):
@@ -39,7 +34,7 @@ def get_pdf_text(pdf_file):
         st.error(f"Error reading PDF file: {e}")
         return None
 
-def get_gemini_response(resume_text, jd_text):
+def get_llama_response(resume_text, jd_text):
     """Generates a response from the Gemini model based on a prompt."""
     
     # The detailed prompt instructing the AI
@@ -84,11 +79,32 @@ def get_gemini_response(resume_text, jd_text):
     """
     
     try:
-        response = model.generate_content(prompt)
-        # Clean up the response to ensure it's valid JSON
-        # The model sometimes wraps the JSON in ```json ... ```
-        cleaned_response = response.text.strip().replace("```json", "").replace("```", "").strip()
-        return json.loads(cleaned_response)
+        # response = model.generate_content(prompt)
+        # # Clean up the response to ensure it's valid JSON
+        # # The model sometimes wraps the JSON in ```json ... ```
+        # cleaned_response = response.text.strip().replace("```json", "").replace("```", "").strip()
+        # return json.loads(cleaned_response)
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0
+        )
+
+        raw_text = response.choices[0].message.content.strip()
+
+        # Debug (optional)
+        # st.write("RAW RESPONSE:", raw_text)
+
+        # Clean markdown if present
+        raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+
+        # Safety check
+        if not raw_text.startswith("{"):
+            raise ValueError("Model did not return valid JSON")
+
+        return json.loads(raw_text)
+
+
     except Exception as e:
         st.error(f"An error occurred while communicating with the AI model: {e}")
         raw_response_text = "No response received"
@@ -229,9 +245,8 @@ st.title("🤖 AI Career Advisor")
 st.write("Get a professional analysis of your resume. Upload your resume, paste the job description, and let the AI do the rest!")
 
 # Check if API key is configured
-if not API_KEY or not model:
-    st.error("🔴 API Key not found or invalid! Please create a .env file in the same folder with your GOOGLE_API_KEY.")
-    st.info("Example .env file content:\nGOOGLE_API_KEY=\"Your-Key-Here\"")
+if not os.getenv("GROQ_API_KEY"):
+    st.error("🔴 GROQ_API_KEY not found!")
     st.stop()
 
 # Layout with columns
@@ -259,7 +274,7 @@ if st.button("Analyze ✨"):
             
             if resume_text:
                 # Get analysis from Gemini
-                analysis_result = get_gemini_response(resume_text, job_description)
+                analysis_result = get_llama_response(resume_text, job_description)
 
                 if analysis_result:
                     st.success("Analysis Complete!")
