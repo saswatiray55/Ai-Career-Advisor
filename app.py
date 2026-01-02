@@ -3,13 +3,13 @@ import streamlit as st
 import fitz  # PyMuPDF
 import os
 import json
-from dotenv import load_dotenv
+
 from groq import Groq
 
 
 # --- Configuration ---
 # Load environment variables from .env file
-load_dotenv()
+
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
